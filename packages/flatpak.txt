@@ -1,8 +1,6 @@
-# Browsers
-org.mozilla.firefox
-
 # Communication
 com.discordapp.Discord
+us.zoom.Zoom
 
 
 # Media

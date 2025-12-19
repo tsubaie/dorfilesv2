@@ -62,17 +62,20 @@ install_flatpak_packages() {
         sudo apt install -y gnome-software-plugin-flatpak
     fi
     
-    # Add Flathub if not already added
-    flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+    # Add Flathub if not already added (prefer user installation)
+    if ! flatpak remote-list --user | grep -q "flathub"; then
+        print_info "Adding Flathub remote for user..."
+        flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+    fi
     
     if [ -f "$SCRIPT_DIR/packages/flatpak.txt" ]; then
         while IFS= read -r package; do
             # Skip empty lines and comments
             [[ -z "$package" || "$package" =~ ^#.* ]] && continue
             
-            if ! flatpak list | grep -q "$package"; then
+            if ! flatpak list --user | grep -q "$package"; then
                 print_info "Installing $package..."
-                flatpak install -y flathub "$package"
+                flatpak install --user -y flathub "$package"
             else
                 print_status "$package already installed"
             fi
@@ -141,18 +144,37 @@ install_tailscale() {
         print_status "Tailscale installed"
     fi
     
-    # Enable and start Tailscale
+    # Enable and start Tailscale service
     print_info "Enabling Tailscale service..."
     sudo systemctl enable --now tailscaled
     print_status "Tailscale service enabled"
     
-    # Authenticate and configure as exit node
-    print_info "Starting Tailscale authentication..."
-    print_info "Please authenticate in the browser that opens..."
-    sudo tailscale up --advertise-exit-node
-    
-    print_status "Tailscale configured as exit node"
-    print_info "Remember to approve this device as an exit node in the Tailscale admin console"
+    # Check if Tailscale is already authenticated and running
+    if sudo tailscale status 2>/dev/null | grep -q "^# "; then
+        print_status "Tailscale is already authenticated and running"
+        
+        # Check if already advertising as exit node
+        if sudo tailscale status --peers=false 2>/dev/null | grep -q "offers exit node"; then
+            print_status "Already configured as exit node"
+        else
+            print_info "Configuring as exit node..."
+            print_info "Note: If you see warnings about existing settings, that's normal"
+            
+            # Try to configure, but don't fail if it's already configured
+            sudo tailscale up --advertise-exit-node 2>/dev/null || true
+            
+            print_status "Exit node configuration attempted"
+            print_info "Remember to approve this device as an exit node in the Tailscale admin console"
+        fi
+    else
+        # First time setup
+        print_info "Starting Tailscale authentication..."
+        print_info "Please authenticate in the browser that opens..."
+        sudo tailscale up --advertise-exit-node
+        
+        print_status "Tailscale configured as exit node"
+        print_info "Remember to approve this device as an exit node in the Tailscale admin console"
+    fi
 }
 
 # Install and setup ZSH
