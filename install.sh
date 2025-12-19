@@ -84,13 +84,121 @@ install_flatpak_packages() {
     fi
 }
 
+# Install Ghostty terminal
+install_ghostty() {
+    print_info "Installing Ghostty terminal..."
+    if command -v ghostty &> /dev/null; then
+        print_status "Ghostty already installed"
+    else
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/mkasberg/ghostty-ubuntu/HEAD/install.sh)"
+        print_status "Ghostty installed"
+    fi
+}
+
+# Install Brave browser
+install_brave() {
+    print_info "Installing Brave browser..."
+    if command -v brave-browser &> /dev/null; then
+        print_status "Brave already installed"
+    else
+        curl -fsS https://dl.brave.com/install.sh | sh
+        print_status "Brave installed"
+    fi
+}
+
+# Install Starship prompt
+install_starship() {
+    print_info "Installing Starship prompt..."
+    if command -v starship &> /dev/null; then
+        print_status "Starship already installed"
+    else
+        curl -sS https://starship.rs/install.sh | sh -s -- -y
+        print_status "Starship installed"
+        
+        # Add to bashrc if not already there
+        if ! grep -q "starship init bash" ~/.bashrc; then
+            echo 'eval "$(starship init bash)"' >> ~/.bashrc
+            print_status "Starship added to .bashrc"
+        fi
+        
+        # Add to zshrc if not already there (for when zsh is set up)
+        if [ -f ~/.zshrc ]; then
+            if ! grep -q "starship init zsh" ~/.zshrc; then
+                echo 'eval "$(starship init zsh)"' >> ~/.zshrc
+                print_status "Starship added to .zshrc"
+            fi
+        fi
+    fi
+}
+
+# Install and setup Tailscale
+install_tailscale() {
+    print_info "Installing Tailscale..."
+    if command -v tailscale &> /dev/null; then
+        print_status "Tailscale already installed"
+    else
+        curl -fsSL https://tailscale.com/install.sh | sh
+        print_status "Tailscale installed"
+    fi
+    
+    # Enable and start Tailscale
+    print_info "Enabling Tailscale service..."
+    sudo systemctl enable --now tailscaled
+    print_status "Tailscale service enabled"
+    
+    # Authenticate and configure as exit node
+    print_info "Starting Tailscale authentication..."
+    print_info "Please authenticate in the browser that opens..."
+    sudo tailscale up --advertise-exit-node
+    
+    print_status "Tailscale configured as exit node"
+    print_info "Remember to approve this device as an exit node in the Tailscale admin console"
+}
+
+# Install and setup ZSH
+install_zsh() {
+    print_info "Installing and setting up ZSH..."
+    
+    # Install zsh if not already installed
+    if ! command -v zsh &> /dev/null; then
+        sudo apt install -y zsh
+        print_status "ZSH installed"
+    else
+        print_status "ZSH already installed"
+    fi
+    
+    # Change default shell to zsh
+    if [ "$SHELL" != "$(which zsh)" ]; then
+        print_info "Changing default shell to ZSH..."
+        chsh -s $(which zsh)
+        print_status "Default shell changed to ZSH (will take effect after logout)"
+    else
+        print_status "ZSH is already the default shell"
+    fi
+    
+    # Install Oh My Zsh if not already installed
+    if [ ! -d "$HOME/.oh-my-zsh" ]; then
+        print_info "Installing Oh My Zsh..."
+        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+        print_status "Oh My Zsh installed"
+        
+        # Add starship to zshrc if not already there
+        if [ -f ~/.zshrc ] && ! grep -q "starship init zsh" ~/.zshrc; then
+            echo 'eval "$(starship init zsh)"' >> ~/.zshrc
+            print_status "Starship added to .zshrc"
+        fi
+    else
+        print_status "Oh My Zsh already installed"
+    fi
+}
+
 # Main execution
 main() {
     print_info "Starting package installation for Pop!_OS..."
     echo ""
     
     # Ask for confirmation
-    read -p "This will install packages from apt.txt and flatpak.txt. Continue? (y/n) " -n 1 -r
+    read -p "This will install packages and configure your system. Continue? (y/n) " -n 1 -r
     echo ""
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         print_error "Installation cancelled"
@@ -106,8 +214,28 @@ main() {
     install_flatpak_packages
     echo ""
     
+    install_ghostty
+    echo ""
+    
+    install_brave
+    echo ""
+    
+    install_starship
+    echo ""
+    
+    install_tailscale
+    echo ""
+    
+    install_zsh
+    echo ""
+    
     print_status "All packages installed successfully!"
-    print_info "You may need to restart your system for some changes to take effect."
+    echo ""
+    print_info "Important notes:"
+    echo "  - You need to log out and log back in for ZSH to become your default shell"
+    echo "  - Approve this device as an exit node in the Tailscale admin console at https://login.tailscale.com/admin/machines"
+    echo "  - Tailscale will persist across reboots (systemd service enabled)"
+    echo "  - Starship prompt is configured for both bash and zsh"
 }
 
 # Run main function
