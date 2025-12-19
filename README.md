@@ -45,6 +45,7 @@ dotfiles/
 - **Tailscale** - VPN mesh network (configured as exit node)
 - **ZSH** with Oh My Zsh
 - **GNU Stow** - Dotfile management
+- **1Password** - Password manager
 
 ### Configurations (via Stow)
 - Ghostty terminal settings
