@@ -192,6 +192,26 @@ install_zsh() {
     fi
 }
 
+# Deploy dotfiles using GNU Stow
+deploy_dotfiles() {
+    print_info "Deploying dotfiles with GNU Stow..."
+    
+    cd "$SCRIPT_DIR"
+    
+    # Stow all config packages
+    for package in ghostty starship zsh; do
+        if [ -d "$package" ]; then
+            print_info "Stowing $package..."
+            stow -v -R -t "$HOME" "$package"
+            print_status "$package configured"
+        fi
+    done
+    
+    cd - > /dev/null
+    print_status "All dotfiles deployed"
+}
+
+
 # Main execution
 main() {
     print_info "Starting package installation for Pop!_OS..."
@@ -227,6 +247,9 @@ main() {
     echo ""
     
     install_zsh
+    echo ""
+    
+    deploy_dotfiles
     echo ""
     
     print_status "All packages installed successfully!"

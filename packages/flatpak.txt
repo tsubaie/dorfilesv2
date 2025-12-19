@@ -1,5 +1,4 @@
 # Browsers
-com.brave.Browser
 org.mozilla.firefox
 
 # Communication

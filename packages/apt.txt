@@ -4,6 +4,7 @@ curl
 wget
 code
 
+
 # Terminal utilities
 btop
 unzip
@@ -11,3 +12,4 @@ lsd
 zsh
 bat
 fd-find
+stow
