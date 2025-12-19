@@ -219,20 +219,53 @@ install_zsh() {
 deploy_dotfiles() {
     print_info "Deploying dotfiles with GNU Stow..."
     
+    # Ensure stow is installed
+    if ! command -v stow &> /dev/null; then
+        print_info "Installing stow..."
+        sudo apt install -y stow
+    fi
+    
+    # Wait a moment and update command hash
+    sleep 1
+    hash -r
+    
+    # Backup existing dotfiles that would conflict
+    BACKUP_DIR="$HOME/.dotfiles_backup_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$BACKUP_DIR"
+    
+    for file in .zshrc .config/ghostty/config .config/starship.toml; do
+        if [ -e "$HOME/$file" ] && [ ! -L "$HOME/$file" ]; then
+            print_info "Backing up existing $file..."
+            mkdir -p "$BACKUP_DIR/$(dirname "$file")"
+            cp -r "$HOME/$file" "$BACKUP_DIR/$file"
+            rm -rf "$HOME/$file"
+        fi
+    done
+    
+    # Also remove the ghostty directory if it exists and is not a symlink
+    if [ -d "$HOME/.config/ghostty" ] && [ ! -L "$HOME/.config/ghostty" ]; then
+        rm -rf "$HOME/.config/ghostty"
+    fi
+    
     cd "$SCRIPT_DIR"
     
     # Stow all config packages
     for package in ghostty starship zsh; do
         if [ -d "$package" ]; then
             print_info "Stowing $package..."
-            # Use full path to stow in case it's not in PATH yet
-            /usr/bin/stow -v -R -t "$HOME" "$package" 2>&1 | grep -v "BUG in find_stowed_path" || true
+            stow -v -R -t "$HOME" "$package" 2>&1 | grep -v "BUG in find_stowed_path" || true
             print_status "$package configured"
         fi
     done
     
     cd - > /dev/null
-    print_status "All dotfiles deployed"
+    
+    if [ -d "$BACKUP_DIR" ] && [ "$(ls -A $BACKUP_DIR)" ]; then
+        print_status "All dotfiles deployed (backups in: $BACKUP_DIR)"
+    else
+        print_status "All dotfiles deployed"
+        rmdir "$BACKUP_DIR" 2>/dev/null || true
+    fi
 }
 
 # Install 1Password
