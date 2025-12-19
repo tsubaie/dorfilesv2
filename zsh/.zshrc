@@ -7,11 +7,11 @@ source "${ZINIT_HOME}/zinit.zsh"
 
 
 # Safer default aliases
-alias update='sudo nala update && sudo nala upgrade'
+alias update='sudo nala update && sudo nala upgrade && sudo flatpak update'
 alias rm='rm -i'        # Always ask for confirmation before deletion
 alias cp='cp -i'        # Ask before overwriting
 alias mv='mv -i'        # Ask before overwriting
-alias ll='lsd -h -1 -l'      # Long listing format, human readable sizes
+alias ll='lsd -h -1 -l -a'      # Long listing format, human readable sizes
 alias la='lsd -h -1 -l -a'     # Long listing, human readable, show hidden files
 alias ff='fzf'
 
