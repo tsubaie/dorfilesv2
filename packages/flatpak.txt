@@ -7,7 +7,7 @@ us.zoom.Zoom
 org.videolan.VLC
 com.adobe.Reader
 io.github.kolunmi.Bazaar
-
+hu.irl.cameractrls
 
 # Backups
 org.gnome.World.PikaBackup

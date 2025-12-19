@@ -1,9 +1,9 @@
+
 # Development tools
 git
 curl
 wget
 code
-
 
 # Terminal utilities
 btop

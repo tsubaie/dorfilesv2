@@ -37,11 +37,12 @@ install_apt_packages() {
             # Skip empty lines and comments
             [[ -z "$package" || "$package" =~ ^#.* ]] && continue
             
-            if ! dpkg -l | grep -q "^ii  $package "; then
+            # More robust check for installed packages
+            if dpkg -s "$package" 2>/dev/null | grep -q "Status: install ok installed"; then
+                print_status "$package already installed"
+            else
                 print_info "Installing $package..."
                 sudo apt install -y "$package"
-            else
-                print_status "$package already installed"
             fi
         done < "$SCRIPT_DIR/packages/apt.txt"
         print_status "APT packages installed"
@@ -224,7 +225,8 @@ deploy_dotfiles() {
     for package in ghostty starship zsh; do
         if [ -d "$package" ]; then
             print_info "Stowing $package..."
-            stow -v -R -t "$HOME" "$package"
+            # Use full path to stow in case it's not in PATH yet
+            /usr/bin/stow -v -R -t "$HOME" "$package" 2>&1 | grep -v "BUG in find_stowed_path" || true
             print_status "$package configured"
         fi
     done
@@ -284,6 +286,9 @@ main() {
     install_apt_packages
     echo ""
     
+    # Refresh PATH to include newly installed packages
+    hash -r
+    
     install_flatpak_packages
     echo ""
     
@@ -315,6 +320,19 @@ main() {
     echo "  - Approve this device as an exit node in the Tailscale admin console at https://login.tailscale.com/admin/machines"
     echo "  - Tailscale will persist across reboots (systemd service enabled)"
     echo "  - Starship prompt is configured for both bash and zsh"
+    echo ""
+    
+    # Offer to open a new ZSH shell
+    read -p "Would you like to start a ZSH shell now to see your new config? (y/n) " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Starting ZSH shell..."
+        print_info "Type 'exit' to return to the previous shell"
+        echo ""
+        exec zsh -l
+    else
+        print_info "To apply ZSH config, run: exec zsh"
+    fi
 }
 
 # Run main function
