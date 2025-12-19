@@ -13,9 +13,7 @@ format = """
 $character
 """
 
-# 👇 Add a blank line before this if needed
-right_format = "$cmd_duration"
-
+right_format = """$git_branch$git_status | $cmd_duration"""
 
 [username]
 show_always = true
@@ -30,13 +28,13 @@ read_only = "🔒"
 read_only_style = "bg:#3C6EB4 fg:#FFFFFF"
 
 [git_branch]
-symbol = " "
-format = "[$symbol$branch]($style)"
-style = "bg:#51A2DA fg:#0E1116"
+symbol = " "
+format = "[$symbol$branch]($style) "
+style = "bold purple"
 
 [git_status]
-format = "[ $all_status$ahead_behind]($style)"
-style = "bg:#51A2DA fg:#0E1116"
+format = "[$all_status$ahead_behind]($style) "
+style = "bold yellow"
 
 [python]
 format = " [$version]($style)"
@@ -46,8 +44,8 @@ disabled = false
 [time]
 disabled = false
 time_format = " %H:%M"
-style = "bg:#E59728 fg:#0E1116"
-
+style = "bold cyan"
+format = "[$time]($style)"
 
 
 [cmd_duration]
