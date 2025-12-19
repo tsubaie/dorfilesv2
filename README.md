@@ -124,3 +124,29 @@ git push
 - ✅ Can enable/disable configs easily
 - ✅ No custom scripts needed
 - ✅ Standard tool used by many dotfile repos
+
+
+
+## Syncing Changes
+
+### Push changes to GitHub
+After modifying your dotfiles:
+```bash
+./push.sh
+```
+
+This will:
+- Show you what changed
+- Ask for a commit message
+- Commit and push to GitHub
+
+### Pull changes from GitHub
+To get the latest dotfiles from another machine:
+```bash
+./pull.sh
+```
+
+This will:
+- Pull the latest changes
+- Ask if you want to apply them (restow)
+- Apply configs if confirmed

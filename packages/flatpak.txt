@@ -13,4 +13,8 @@ io.github.kolunmi.Bazaar
 
 # Backups
 org.gnome.World.PikaBackup
+
 org.videolan.VLC
+dev.deedles.Trayscale
+com.github.dynobo.normcap
+com.adobe.Reader
