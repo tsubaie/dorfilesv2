@@ -1,0 +1,17 @@
+# Browsers
+com.brave.Browser
+org.mozilla.firefox
+
+# Communication
+com.discordapp.Discord
+
+
+# Media
+org.videolan.VLC
+com.adobe.Reader
+io.github.kolunmi.Bazaar
+
+
+# Backups
+org.gnome.World.PikaBackup
+org.videolan.VLC
