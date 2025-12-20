@@ -3,7 +3,8 @@ git
 curl
 wget
 code
-
+nodejs
+npm
 
 # Terminal utilities
 btop

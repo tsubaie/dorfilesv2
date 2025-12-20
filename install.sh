@@ -27,71 +27,123 @@ print_section() {
     echo -e "\n${YELLOW}▶${NC} $1"
 }
 
-
-# Functions
-print_status() {
-    echo -e "${GREEN}✓${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}✗${NC} $1"
-}
-
-print_info() {
-    echo -e "${BLUE}→${NC} $1"
-}
-
-print_section() {
-    echo -e "\n${YELLOW}▶${NC} $1"
-}
-
-# Progress bar variables
-TOTAL_STEPS=10
-CURRENT_STEP=0
-
-# Progress bar function
-show_progress() {
-    local step_name="$1"
-    ((CURRENT_STEP++))
-    local percent=$((CURRENT_STEP * 100 / TOTAL_STEPS))
-    local filled=$((CURRENT_STEP * 40 / TOTAL_STEPS))
-    local empty=$((40 - filled))
+# Wait for apt/dpkg locks to clear
+wait_for_apt_lock() {
+    local count=0
+    local max_wait=20  # Reduced from 40
     
-    printf "\r${BLUE}[${NC}"
-    printf "%${filled}s" | tr ' ' '█'
-    printf "%${empty}s" | tr ' ' '░'
-    printf "${BLUE}]${NC} ${percent}%% - ${step_name}${NC}"
+    while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+          sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
+          sudo fuser /var/cache/apt/archives/lock >/dev/null 2>&1; do
+        
+        if [ $count -eq 0 ]; then
+            print_info "Waiting for other package managers to finish..."
+        fi
+        
+        sleep 2
+        ((count++))
+        
+        if [ $count -ge $max_wait ]; then
+            print_error "Timeout waiting for package manager locks"
+            echo ""
+            read -p "$(echo -e ${YELLOW}?)${NC} Force kill package managers and continue? (y/n) " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                print_info "Killing stuck processes..."
+                sudo killall apt apt-get nala dpkg 2>/dev/null || true
+                sudo rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock 2>/dev/null || true
+                sleep 2
+                print_info "Cleaned up locks, continuing..."
+                return 0
+            else
+                return 1
+            fi
+        fi
+    done
     
-    if [ $CURRENT_STEP -eq $TOTAL_STEPS ]; then
-        echo ""
-    fi
+    sleep 1
+    return 0
+}
+
+# Ask user if they want to proceed with a step
+ask_proceed() {
+    local message="$1"
+    echo ""
+    read -p "$(echo -e ${BLUE}?${NC}) $message (y/n) " -n 1 -r
+    echo ""
+    [[ $REPLY =~ ^[Yy]$ ]]
 }
 
 # Update system
 update_system() {
-    print_section "Updating system"
-    sudo apt update > /dev/null 2>&1 && sudo apt upgrade -y > /dev/null 2>&1
-    print_status "System updated"
+    if ask_proceed "Update system packages?"; then
+        print_section "Updating system"
+        print_info "Running apt update..."
+        sudo apt update
+        print_info "Running apt upgrade..."
+        sudo apt upgrade -y
+        print_status "System updated"
+    else
+        print_info "Skipped system update"
+    fi
+}
+
+# Install Nala package manager
+install_nala() {
+    if command -v nala &> /dev/null; then
+        print_info "Nala already installed"
+        return
+    fi
+    
+    if ask_proceed "Install Nala package manager?"; then
+        print_section "Installing Nala"
+        print_info "Downloading and running Nala installer..."
+        curl https://gitlab.com/volian/volian-archive/-/raw/main/install-nala.sh | bash
+        print_status "Nala installed"
+    else
+        print_info "Skipped Nala installation"
+    fi
 }
 
 # Install APT packages
 install_apt_packages() {
+    if ! ask_proceed "Install APT packages from apt.txt?"; then
+        print_info "Skipped APT packages"
+        return
+    fi
+    
     print_section "Installing APT packages"
     if [ -f "$SCRIPT_DIR/packages/apt.txt" ]; then
-        local count=0
+        # Determine which package manager to use
+        if command -v nala &> /dev/null; then
+            PKG_MGR="nala"
+            print_info "Using nala for package installation"
+        else
+            PKG_MGR="apt"
+            print_info "Using apt for package installation"
+        fi
+        
+        # Collect packages to install
+        local to_install=()
         while IFS= read -r package; do
             [[ -z "$package" || "$package" =~ ^#.* ]] && continue
             
             if ! dpkg -s "$package" &>/dev/null; then
-                ((count++))
-                sudo apt install -y "$package" > /dev/null 2>&1
+                to_install+=("$package")
+            else
+                print_status "$package already installed"
             fi
         done < "$SCRIPT_DIR/packages/apt.txt"
         
-        if [ $count -eq 0 ]; then
-            print_status "All packages already installed"
+        # Install all at once
+        if [ ${#to_install[@]} -gt 0 ]; then
+            print_info "Installing ${#to_install[@]} packages: ${to_install[*]}"
+            wait_for_apt_lock || return 1
+            
+            DEBIAN_FRONTEND=noninteractive sudo $PKG_MGR install -y "${to_install[@]}"
+            print_status "Installed ${#to_install[@]} package(s)"
         else
-            print_status "Installed $count package(s)"
+            print_status "All packages already installed"
         fi
     else
         print_error "apt.txt not found"
@@ -101,175 +153,237 @@ install_apt_packages() {
 
 # Install Flatpak packages
 install_flatpak_packages() {
+    if ! ask_proceed "Install Flatpak packages from flatpak.txt?"; then
+        print_info "Skipped Flatpak packages"
+        return
+    fi
+    
     print_section "Installing Flatpak packages"
     
     if ! command -v flatpak &> /dev/null; then
-        sudo apt install -y flatpak gnome-software-plugin-flatpak > /dev/null 2>&1
+        print_info "Installing Flatpak..."
+        wait_for_apt_lock
+        sudo apt install -y flatpak gnome-software-plugin-flatpak
     fi
     
     if ! flatpak remote-list --user 2>/dev/null | grep -q "flathub"; then
-        flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo 2>/dev/null
+        print_info "Adding Flathub repository..."
+        flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
     fi
     
     if [ -f "$SCRIPT_DIR/packages/flatpak.txt" ]; then
-        local count=0
+        local installed=()
         while IFS= read -r package; do
             [[ -z "$package" || "$package" =~ ^#.* ]] && continue
             
             if ! flatpak list --user 2>/dev/null | grep -q "$package"; then
-                ((count++))
-                flatpak install --user -y flathub "$package" > /dev/null 2>&1
+                print_info "Installing $package..."
+                flatpak install --user -y flathub "$package"
+                local app_name=$(echo "$package" | awk -F'.' '{print $NF}')
+                installed+=("$app_name")
+            else
+                print_status "$package already installed"
             fi
         done < "$SCRIPT_DIR/packages/flatpak.txt"
         
-        if [ $count -eq 0 ]; then
+        if [ ${#installed[@]} -eq 0 ]; then
             print_status "All packages already installed"
         else
-            print_status "Installed $count package(s)"
+            print_status "Installed ${#installed[@]} app(s)"
         fi
     fi
 }
 
 # Install Ghostty terminal
 install_ghostty() {
-    print_section "Installing Ghostty"
     if command -v ghostty &> /dev/null; then
-        print_status "Already installed"
+        print_info "Ghostty already installed"
+        return
+    fi
+    
+    if ask_proceed "Install Ghostty terminal?"; then
+        print_section "Installing Ghostty"
+        print_info "Running Ghostty installer..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/mkasberg/ghostty-ubuntu/HEAD/install.sh)"
+        print_status "Ghostty installed"
     else
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/mkasberg/ghostty-ubuntu/HEAD/install.sh)" > /dev/null 2>&1
-        print_status "Installed"
+        print_info "Skipped Ghostty installation"
     fi
 }
 
 # Install Brave browser
 install_brave() {
-    print_section "Installing Brave"
     if command -v brave-browser &> /dev/null; then
-        print_status "Already installed"
+        print_info "Brave already installed"
+        return
+    fi
+    
+    if ask_proceed "Install Brave browser?"; then
+        print_section "Installing Brave"
+        print_info "Running Brave installer..."
+        curl -fsS https://dl.brave.com/install.sh | sh
+        print_status "Brave installed"
     else
-        curl -fsS https://dl.brave.com/install.sh 2>/dev/null | sh > /dev/null 2>&1
-        print_status "Installed"
+        print_info "Skipped Brave installation"
     fi
 }
 
 # Install Starship prompt
 install_starship() {
-    print_section "Installing Starship"
     if command -v starship &> /dev/null; then
-        print_status "Already installed"
-    else
-        curl -sS https://starship.rs/install.sh 2>/dev/null | sh -s -- -y > /dev/null 2>&1
+        print_info "Starship already installed"
+        return
+    fi
+    
+    if ask_proceed "Install Starship prompt?"; then
+        print_section "Installing Starship"
+        print_info "Running Starship installer..."
+        curl -sS https://starship.rs/install.sh | sh -s -- -y
         
         if ! grep -q "starship init bash" ~/.bashrc 2>/dev/null; then
             echo 'eval "$(starship init bash)"' >> ~/.bashrc
+            print_info "Added Starship to .bashrc"
         fi
         
         if [ -f ~/.zshrc ] && ! grep -q "starship init zsh" ~/.zshrc; then
             echo 'eval "$(starship init zsh)"' >> ~/.zshrc
+            print_info "Added Starship to .zshrc"
         fi
-        print_status "Installed"
+        print_status "Starship installed"
+    else
+        print_info "Skipped Starship installation"
     fi
 }
 
 # Install and setup Tailscale
 install_tailscale() {
+    if sudo tailscale status &> /dev/null && sudo tailscale status --peers=false 2>/dev/null | grep -q "offers exit node"; then
+        print_info "Tailscale already configured"
+        return
+    fi
+    
+    if ! ask_proceed "Install and configure Tailscale?"; then
+        print_info "Skipped Tailscale installation"
+        return
+    fi
+    
     print_section "Installing Tailscale"
     
     if ! command -v tailscale &> /dev/null; then
-        curl -fsSL https://tailscale.com/install.sh 2>/dev/null | sh > /dev/null 2>&1
+        print_info "Running Tailscale installer..."
+        curl -fsSL https://tailscale.com/install.sh | sh
+        print_status "Tailscale installed"
     fi
     
-    sudo systemctl enable --now tailscaled &> /dev/null
+    print_info "Enabling Tailscale service..."
+    sudo systemctl enable --now tailscaled
     
-    # Check if already running and configured
     if sudo tailscale status &> /dev/null; then
-        # Already authenticated
-        if sudo tailscale status --peers=false 2>/dev/null | grep -q "offers exit node"; then
-            # Already configured as exit node
-            print_status "Already configured"
-            return
-        else
-            # Authenticated but not exit node - configure silently
-            sudo tailscale up --advertise-exit-node &> /dev/null || true
+        if ! sudo tailscale status --peers=false 2>/dev/null | grep -q "offers exit node"; then
+            print_info "Configuring as exit node..."
+            sudo tailscale up --advertise-exit-node
             print_status "Configured as exit node"
-            return
         fi
+    else
+        print_info "Please authenticate in the browser..."
+        sudo tailscale up --advertise-exit-node
+        print_status "Configured as exit node"
+        print_info "Remember to approve in: https://login.tailscale.com/admin/machines"
     fi
-    
-    # Not authenticated yet - need user interaction
-    print_info "Please authenticate in the browser..."
-    sudo tailscale up --advertise-exit-node 2>&1 | grep -v "Warning:" | grep -v "See https://"
-    print_status "Configured as exit node"
-    print_info "Approve in admin console: https://login.tailscale.com/admin/machines"
 }
 
 # Install 1Password
 install_1password() {
+    if command -v 1password &> /dev/null; then
+        print_info "1Password already installed"
+        return
+    fi
+    
+    if ! ask_proceed "Install 1Password?"; then
+        print_info "Skipped 1Password installation"
+        return
+    fi
+    
     print_section "Installing 1Password"
     
-    if command -v 1password &> /dev/null; then
-        print_status "Already installed"
-    else
-        curl -sS https://downloads.1password.com/linux/keys/1password.asc 2>/dev/null | \
-        sudo gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg 2>/dev/null
-        
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | \
-        sudo tee /etc/apt/sources.list.d/1password.list > /dev/null
-        
-        sudo mkdir -p /etc/debsig/policies/AC2D62742012EA22/ 2>/dev/null
-        curl -sS https://downloads.1password.com/linux/debian/debsig/1password.pol 2>/dev/null | \
-        sudo tee /etc/debsig/policies/AC2D62742012EA22/1password.pol > /dev/null
-        
-        sudo mkdir -p /usr/share/debsig/keyrings/AC2D62742012EA22 2>/dev/null
-        curl -sS https://downloads.1password.com/linux/keys/1password.asc 2>/dev/null | \
-        sudo gpg --dearmor --output /usr/share/debsig/keyrings/AC2D62742012EA22/debsig.gpg 2>/dev/null
-        
-        sudo apt update > /dev/null 2>&1
-        sudo apt install -y 1password > /dev/null 2>&1
-        print_status "Installed"
-    fi
+    print_info "Adding 1Password GPG key..."
+    curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
+    sudo gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg
+    
+    print_info "Adding 1Password repository..."
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | \
+    sudo tee /etc/apt/sources.list.d/1password.list
+    
+    print_info "Setting up debsig policy..."
+    sudo mkdir -p /etc/debsig/policies/AC2D62742012EA22/
+    curl -sS https://downloads.1password.com/linux/debian/debsig/1password.pol | \
+    sudo tee /etc/debsig/policies/AC2D62742012EA22/1password.pol > /dev/null
+    
+    sudo mkdir -p /usr/share/debsig/keyrings/AC2D62742012EA22
+    curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
+    sudo gpg --dearmor --output /usr/share/debsig/keyrings/AC2D62742012EA22/debsig.gpg
+    
+    print_info "Installing 1Password..."
+    wait_for_apt_lock
+    sudo apt update
+    sudo apt install -y 1password
+    print_status "1Password installed"
 }
 
 # Install and setup ZSH
 install_zsh() {
+    if ! ask_proceed "Install and configure ZSH with Oh My Zsh?"; then
+        print_info "Skipped ZSH installation"
+        return
+    fi
+    
     print_section "Installing ZSH"
     
     if ! command -v zsh &> /dev/null; then
-        sudo apt install -y zsh > /dev/null 2>&1
+        print_info "Installing ZSH..."
+        wait_for_apt_lock
+        sudo apt install -y zsh
     fi
     
     if [ "$SHELL" != "$(which zsh)" ]; then
-        chsh -s $(which zsh) 2>/dev/null
-        print_status "Set as default shell (requires logout)"
-    else
-        print_status "Already default shell"
+        print_info "Setting ZSH as default shell..."
+        chsh -s $(which zsh)
+        print_info "Default shell changed (takes effect after logout)"
     fi
     
     if [ ! -d "$HOME/.oh-my-zsh" ]; then
-        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended > /dev/null 2>&1
+        print_info "Installing Oh My Zsh..."
+        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
         
         if [ -f ~/.zshrc ] && ! grep -q "starship init zsh" ~/.zshrc; then
             echo 'eval "$(starship init zsh)"' >> ~/.zshrc
+            print_info "Added Starship to .zshrc"
         fi
-        print_status "Installed with Oh My Zsh"
+        print_status "Oh My Zsh installed"
     else
-        print_status "Already installed"
+        print_status "ZSH already configured"
     fi
 }
 
 # Deploy dotfiles using GNU Stow
 deploy_dotfiles() {
+    if ! ask_proceed "Deploy dotfiles with GNU Stow?"; then
+        print_info "Skipped dotfile deployment"
+        return
+    fi
+    
     print_section "Deploying dotfiles"
     
     if ! command -v stow &> /dev/null; then
-        sudo apt install -y stow > /dev/null 2>&1
+        print_info "Installing stow..."
+        wait_for_apt_lock
+        sudo apt install -y stow
     fi
     
     sleep 1
     hash -r
     
     BACKUP_DIR="$HOME/.dotfiles_backup_$(date +%Y%m%d_%H%M%S)"
-    local backed_up=0
     local need_backup=false
     
     # Check each file
@@ -292,30 +406,31 @@ deploy_dotfiles() {
         
         case $choice in
             1)
-                print_status "Keeping existing configs"
+                print_status "Kept existing configs"
                 return
                 ;;
             2)
                 mkdir -p "$BACKUP_DIR"
                 for file in .zshrc .config/ghostty/config .config/starship.toml; do
                     if [ -e "$HOME/$file" ] && [ ! -L "$HOME/$file" ]; then
+                        print_info "Backing up $file..."
                         mkdir -p "$BACKUP_DIR/$(dirname "$file")"
                         cp -r "$HOME/$file" "$BACKUP_DIR/$file" 2>/dev/null
                         rm -rf "$HOME/$file"
-                        ((backed_up++))
                     fi
                 done
                 
                 if [ -d "$HOME/.config/ghostty" ] && [ ! -L "$HOME/.config/ghostty" ]; then
                     rm -rf "$HOME/.config/ghostty"
                 fi
+                print_info "Backups saved to: $BACKUP_DIR"
                 ;;
             3)
-                print_status "Skipping stow - merge manually with: stow -R <package>"
+                print_status "Skipped - merge manually"
                 return
                 ;;
             *)
-                print_error "Invalid choice, skipping"
+                print_status "Invalid choice - skipped"
                 return
                 ;;
         esac
@@ -325,18 +440,15 @@ deploy_dotfiles() {
     
     for package in ghostty starship zsh; do
         if [ -d "$package" ]; then
-            stow -R -t "$HOME" "$package" > /dev/null 2>&1
+            print_info "Stowing $package..."
+            stow -R -t "$HOME" "$package"
         fi
     done
     
     cd - > /dev/null
     
-    if [ $backed_up -gt 0 ]; then
-        print_status "Deployed (backed up $backed_up file(s) to $BACKUP_DIR)"
-    else
-        print_status "Deployed"
-        rmdir "$BACKUP_DIR" 2>/dev/null
-    fi
+    print_status "Dotfiles deployed"
+    rmdir "$BACKUP_DIR" 2>/dev/null
 }
 
 # Main execution
@@ -351,7 +463,7 @@ main() {
 ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝    ╚═════╝  ╚═════╝    ╚═╝       ╚═╝     ╚═╝╚══════╝╚══════╝╚══════╝
 EOF
     echo -e "${NC}"
-    echo -e "${GREEN}Pop!_OS Setup - Dotfiles Installer${NC}"
+    echo -e "${BLUE}Pop!_OS Setup - Interactive Dotfiles Installer${NC}"
     echo ""
     
     read -p "Continue with installation? (y/n) " -n 1 -r
@@ -362,6 +474,7 @@ EOF
     fi
     
     update_system
+    install_nala
     install_apt_packages
     hash -r
     install_flatpak_packages
@@ -372,7 +485,6 @@ EOF
     install_1password
     install_zsh
     deploy_dotfiles
-    
     
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════╗${NC}"
