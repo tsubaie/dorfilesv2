@@ -1,9 +1,9 @@
-
 # Development tools
 git
 curl
 wget
 code
+
 
 # Terminal utilities
 btop
@@ -13,3 +13,4 @@ zsh
 bat
 fd-find
 stow
+nala

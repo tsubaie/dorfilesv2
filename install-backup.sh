@@ -349,29 +349,22 @@ main() {
     print_status "All packages installed successfully!"
     echo ""
     print_info "Important notes:"
+    echo "  - You need to log out and log back in for ZSH to become your default shell"
     echo "  - Approve this device as an exit node in the Tailscale admin console at https://login.tailscale.com/admin/machines"
     echo "  - Tailscale will persist across reboots (systemd service enabled)"
     echo "  - Starship prompt is configured for both bash and zsh"
     echo ""
     
-    # Check if parent shell is ZSH by looking at the process
-    PARENT_SHELL=$(ps -p $PPID -o comm=)
-    if [[ "$PARENT_SHELL" == *"zsh"* ]]; then
-        # Parent is ZSH, just give instruction to reload
-        print_status "Already using ZSH!"
-        print_info "To apply the updated config, run: source ~/.zshrc"
-    else
-        # Parent is not ZSH, offer to start it
-        read -p "Would you like to start a ZSH shell now to see your new config? (y/n) " -n 1 -r
+    # Offer to open a new ZSH shell
+    read -p "Would you like to start a ZSH shell now to see your new config? (y/n) " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Starting ZSH shell..."
+        print_info "Type 'exit' to return to the previous shell"
         echo ""
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            print_info "Starting ZSH shell (your .zshrc will be sourced automatically)..."
-            print_info "Type 'exit' to return to the previous shell"
-            echo ""
-            zsh -l
-        else
-            print_info "To apply your ZSH config later, run: exec zsh"
-        fi
+        exec zsh -l
+    else
+        print_info "To apply ZSH config, run: exec zsh"
     fi
 }
 
