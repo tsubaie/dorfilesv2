@@ -3,7 +3,7 @@ git
 curl
 wget
 code
-
+unzip
 
 # Terminal utilities
 btop
@@ -11,6 +11,8 @@ unzip
 lsd
 zsh
 bat
-fd-find
 stow
 nala
+fzf 
+imagemagick
+p7zip-full

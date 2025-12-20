@@ -330,6 +330,38 @@ install_1password() {
     print_status "1Password installed"
 }
 
+# Install Yazi file manager
+install_yazi() {
+    if command -v yazi &> /dev/null; then
+        print_info "Yazi already installed"
+        return
+    fi
+    
+    if ! ask_proceed "Install Yazi file manager?"; then
+        print_info "Skipped Yazi installation"
+        return
+    fi
+    
+    print_section "Installing Yazi"
+    
+    print_info "Downloading Yazi..."
+    wget -qO /tmp/yazi.zip https://github.com/sxyazi/yazi/releases/latest/download/yazi-x86_64-unknown-linux-gnu.zip
+    
+    print_info "Extracting files..."
+    unzip -q /tmp/yazi.zip -d /tmp/yazi-temp
+    
+    print_info "Installing to /usr/local/bin..."
+    sudo mv /tmp/yazi-temp/*/{ya,yazi} /usr/local/bin/
+    sudo chmod +x /usr/local/bin/ya /usr/local/bin/yazi
+    
+    print_info "Cleaning up..."
+    rm -rf /tmp/yazi.zip /tmp/yazi-temp
+    
+    print_status "Yazi installed"
+    print_info "Run with: yazi"
+}
+
+
 # Install and setup ZSH
 install_zsh() {
     if ! ask_proceed "Install and configure ZSH with Oh My Zsh?"; then
@@ -387,7 +419,7 @@ deploy_dotfiles() {
     local need_backup=false
     
     # Check each file
-    for file in .zshrc .config/ghostty/config .config/starship.toml; do
+    for file in .zshrc .config/ghostty/config .config/starship.toml .config/yazi .config/cosmic; do
         if [ -e "$HOME/$file" ] && [ ! -L "$HOME/$file" ]; then
             need_backup=true
             break
@@ -411,7 +443,7 @@ deploy_dotfiles() {
                 ;;
             2)
                 mkdir -p "$BACKUP_DIR"
-                for file in .zshrc .config/ghostty/config .config/starship.toml; do
+                for file in .zshrc .config/ghostty/config .config/starship.toml .config/yazi .config/cosmic; do
                     if [ -e "$HOME/$file" ] && [ ! -L "$HOME/$file" ]; then
                         print_info "Backing up $file..."
                         mkdir -p "$BACKUP_DIR/$(dirname "$file")"
@@ -438,7 +470,7 @@ deploy_dotfiles() {
     
     cd "$SCRIPT_DIR"
     
-    for package in ghostty starship zsh; do
+    for package in ghostty starship zsh yazi cosmic; do
         if [ -d "$package" ]; then
             print_info "Stowing $package..."
             stow -R -t "$HOME" "$package"
@@ -483,6 +515,7 @@ EOF
     install_starship
     install_tailscale
     install_1password
+    install_yazi
     install_zsh
     deploy_dotfiles
     

@@ -15,7 +15,6 @@ alias ll='lsd -h -1 -l'      # Long listing format, human readable sizes
 alias la='lsd -h -1 -l -a'     # Long listing, human readable, show hidden files
 alias ff='fzf'
 
-
 # History config
 HISTSIZE=5000
 SAVEHIST=5000
@@ -70,4 +69,10 @@ zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
 zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'ls --color $realpath'
 
 
-
+function y() {
+	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
+	yazi "$@" --cwd-file="$tmp"
+	IFS= read -r -d '' cwd < "$tmp"
+	[ -n "$cwd" ] && [ "$cwd" != "$PWD" ] && builtin cd -- "$cwd"
+	rm -f -- "$tmp"
+}
